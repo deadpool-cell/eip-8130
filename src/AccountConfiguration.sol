@@ -25,12 +25,6 @@ contract AccountConfiguration {
     event OwnerAdded(address indexed account, bytes32 ownerId, address verifier);
     event OwnerRemoved(address indexed account, bytes32 ownerId);
 
-    error InvalidOwner(Owner owner);
-    error InvalidOwnerId(bytes32 ownerId);
-    error AccountNotInitialized(address account);
-    error NoOwner(address account, bytes32 ownerId);
-    error NotAccountOwner(address account, bytes32 ownerId);
-
     ////////
     // INITIALIZATION
     ////////
@@ -39,7 +33,7 @@ contract AccountConfiguration {
         Owner[] calldata initialOwners,
         uint256 nonce,
         bytes calldata bytecode,
-        bytes calldata initializeCall // most helpful for ERC-1167 proxies
+        bytes calldata initializeCall // helpful for ERC-1167 proxies
     ) external returns (address account) {
         // Early return if account deployed
         account = computeAddress(initialOwners, initializeCall, nonce, bytecode);
@@ -63,11 +57,11 @@ contract AccountConfiguration {
         // Initialize
         if (initializeCall.length > 0) {
             (bool success,) = account.call(initializeCall);
-            if (!success) revert AccountNotInitialized(account);
+            require(success);
         }
 
         // Assert account is initialized to mitigate undeployed implementations
-        if (!IInitialized(account).initialized()) revert AccountNotInitialized(account);
+        require(IInitialized(account).initialized());
     }
 
     ////////
@@ -82,7 +76,6 @@ contract AccountConfiguration {
         _removeOwner(msg.sender, ownerId);
     }
 
-    /// @notice Apply replayable owner changes
     function applyOwnerChanges(
         address account,
         OwnerChange[] calldata ownerChanges,
@@ -92,11 +85,16 @@ contract AccountConfiguration {
         bytes32 digest = keccak256(abi.encode(account, ownerChanges, ownerChangeSequence[account]++));
         require(IVerifier(verifiers[ownerId][account]).verify(account, ownerId, digest, verifyData));
         for (uint256 i; i < ownerChanges.length; i++) {
-            if (ownerChanges[i].add) {
-                _addOwner(account, ownerChanges[i].owner);
-            } else {
-                _removeOwner(account, ownerChanges[i].owner.id);
-            }
+            ownerChanges[i].add
+                ? _addOwner(account, ownerChanges[i].owner)
+                : _removeOwner(account, ownerChanges[i].owner.id);
+        }
+    }
+
+    function multicall(bytes[] calldata data) external {
+        for (uint256 i; i < data.length; i++) {
+            (bool success,) = address(this).delegatecall(data[i]);
+            require(success);
         }
     }
 
@@ -116,11 +114,6 @@ contract AccountConfiguration {
 
     function isOwner(address account, bytes32 ownerId) public view returns (bool) {
         return verifiers[ownerId][account] != address(0);
-    }
-
-    function validateOwner(Owner memory owner) public view {
-        if (owner.verifier == address(0)) revert InvalidOwner(owner);
-        if (owner.verifier.code.length == 0) revert InvalidOwner(owner);
     }
 
     ////////
@@ -152,7 +145,7 @@ contract AccountConfiguration {
     ////////
 
     function _addOwner(address account, Owner calldata owner) internal {
-        validateOwner(owner);
+        require(owner.verifier != address(0) && owner.verifier.code.length > 0);
         require(!isOwner(account, owner.id));
         verifiers[owner.id][account] = owner.verifier;
         emit OwnerAdded(account, owner.id, owner.verifier);
