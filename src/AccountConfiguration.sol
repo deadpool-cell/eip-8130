@@ -6,7 +6,7 @@ import {IVerifier} from "./verifiers/IVerifier.sol";
 
 contract AccountConfiguration {
     struct AccountConfig {
-        uint32 ownerChangeSequence;
+        uint32 sequence;
         bool locked;
         uint40 unlockDelay;
         uint40 unlockInitiatedAt;
@@ -32,6 +32,7 @@ contract AccountConfiguration {
     event AccountCreated(address indexed account, bytes32 bytecodeHash);
     event OwnerAdded(address indexed account, bytes32 ownerId, address verifier);
     event OwnerRemoved(address indexed account, bytes32 ownerId);
+    event SequenceConsumed(address indexed account, uint32 sequence);
 
     ////////
     // INITIALIZATION
@@ -94,13 +95,17 @@ contract AccountConfiguration {
         bytes32 ownerId,
         bytes calldata verifyData
     ) external {
-        bytes32 digest = keccak256(abi.encode(account, ownerChanges, accountConfigs[account].ownerChangeSequence++));
+        bytes32 digest = keccak256(abi.encode(account, ownerChanges, _consumeSequence(account)));
         require(verifyIntent(account, ownerId, digest, verifyData));
         for (uint256 i; i < ownerChanges.length; i++) {
             ownerChanges[i].add
                 ? _addOwner(account, ownerChanges[i].owner)
                 : _removeOwner(account, ownerChanges[i].owner.id);
         }
+    }
+
+    function consumeSequence() external returns (uint32 sequence) {
+        return _consumeSequence(msg.sender);
     }
 
     function multicall(bytes[] calldata data) external {
@@ -138,14 +143,14 @@ contract AccountConfiguration {
     // TRANSIENT STORAGE VIEWS
     ////////
 
-    function getCurrentPayer() external view returns (address payer) {
+    function getCurrentPayer() public view returns (address payer) {
         bytes32 slot = keccak256("context.payer");
         assembly {
             payer := tload(slot)
         }
     }
 
-    function getCurrentOwnerId() external view returns (bytes32 ownerId) {
+    function getCurrentOwnerId() public view returns (bytes32 ownerId) {
         bytes32 slot = keccak256("context.ownerId");
         assembly {
             ownerId := tload(slot)
@@ -212,5 +217,10 @@ contract AccountConfiguration {
         require(isOwner(account, ownerId));
         delete ownerConfigs[ownerId][account];
         emit OwnerRemoved(account, ownerId);
+    }
+
+    function _consumeSequence(address account) internal returns (uint32 sequence) {
+        sequence = accountConfigs[account].sequence++;
+        emit SequenceConsumed(account, sequence);
     }
 }
