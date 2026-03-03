@@ -18,11 +18,15 @@ contract AccountConfiguration {
         Owner owner;
     }
 
-    uint32 public constant UNLOCK_DELAY = 60 minutes;
+    struct OwnerChangeLock {
+        bool locked;
+        uint40 unlockDelay;
+        uint40 initiatedAt;
+    }
 
     mapping(bytes32 ownerId => mapping(address account => address verifier)) public verifiers;
     mapping(address account => uint256 sequence) public ownerChangeSequence;
-    mapping(address account => uint256 lockedUntil) public ownerChangeLocks;
+    mapping(address account => OwnerChangeLock lock) public ownerChangeLocks;
 
     event AccountCreated(address indexed account, Owner[] owners, bytes32 bytecodeHash);
     event OwnerAdded(address indexed account, bytes32 ownerId, address verifier);
@@ -101,17 +105,21 @@ contract AccountConfiguration {
         }
     }
 
-    function lock() external {
-        ownerChangeLocks[msg.sender] = type(uint256).max;
+    function lockOwnerChanges(uint40 unlockDelay) external {
+        require(unlockDelay > 0);
+        require(!ownerChangeLocks[msg.sender].locked);
+        ownerChangeLocks[msg.sender] = OwnerChangeLock({locked: true, unlockDelay: unlockDelay, initiatedAt: 0});
     }
 
-    function initiateUnlock() external {
-        require(ownerChangeLocks[msg.sender] == type(uint256).max);
-        ownerChangeLocks[msg.sender] = block.timestamp + UNLOCK_DELAY;
+    function initiateUnlockOwnerChanges() external {
+        OwnerChangeLock storage lock = ownerChangeLocks[msg.sender];
+        require(lock.locked && lock.initiatedAt == 0);
+        lock.initiatedAt = uint40(block.timestamp) + lock.unlockDelay;
     }
 
-    function finalizeUnlock() external {
-        require(block.timestamp > ownerChangeLocks[msg.sender]);
+    function finalizeUnlockOwnerChanges() external {
+        OwnerChangeLock memory lock = ownerChangeLocks[msg.sender];
+        require(lock.locked && block.timestamp > lock.initiatedAt + lock.unlockDelay);
         delete ownerChangeLocks[msg.sender];
     }
 
@@ -163,14 +171,14 @@ contract AccountConfiguration {
 
     function _addOwner(address account, Owner calldata owner) internal {
         require(owner.verifier != address(0) && owner.verifier.code.length > 0);
-        require(ownerChangeLocks[account] == 0);
+        require(!ownerChangeLocks[account].locked);
         require(!isOwner(account, owner.id));
         verifiers[owner.id][account] = owner.verifier;
         emit OwnerAdded(account, owner.id, owner.verifier);
     }
 
     function _removeOwner(address account, bytes32 ownerId) internal {
-        require(ownerChangeLocks[account] == 0);
+        require(!ownerChangeLocks[account].locked);
         require(isOwner(account, ownerId));
         delete verifiers[ownerId][account];
         emit OwnerRemoved(account, ownerId);
