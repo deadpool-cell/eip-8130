@@ -28,7 +28,7 @@ contract AccountConfiguration {
     mapping(address account => uint256 sequence) public ownerChangeSequence;
     mapping(address account => OwnerChangeLock lock) public ownerChangeLocks;
 
-    event AccountCreated(address indexed account, Owner[] owners, bytes32 bytecodeHash);
+    event AccountCreated(address indexed account, bytes32 bytecodeHash);
     event OwnerAdded(address indexed account, bytes32 ownerId, address verifier);
     event OwnerRemoved(address indexed account, bytes32 ownerId);
 
@@ -43,7 +43,7 @@ contract AccountConfiguration {
         bytes calldata initializeCall // helpful for ERC-1167 proxies
     ) external returns (address account) {
         // Early return if account deployed
-        account = computeAddress(initialOwners, initializeCall, nonce, bytecode);
+        account = computeAddress(initialOwners, nonce, bytecode, initializeCall);
         if (account.code.length > 0) return account;
 
         // Configure intitial owners
@@ -52,16 +52,16 @@ contract AccountConfiguration {
         }
 
         // Create account
-        bytes32 salt = computeSalt(initialOwners, initializeCall, nonce);
+        bytes32 salt = computeSalt(initialOwners, nonce, initializeCall);
         assembly {
             let ptr := mload(0x40)
             calldatacopy(ptr, bytecode.offset, bytecode.length)
             mstore(0x40, add(ptr, bytecode.length))
             pop(create2(0, ptr, bytecode.length, salt))
         }
-        emit AccountCreated(account, initialOwners, keccak256(bytecode));
+        emit AccountCreated(account, keccak256(bytecode));
 
-        // Initialize
+        // Initialize account
         if (initializeCall.length > 0) {
             (bool success,) = account.call(initializeCall);
             require(success);
@@ -90,7 +90,7 @@ contract AccountConfiguration {
         bytes calldata verifyData
     ) external {
         bytes32 digest = keccak256(abi.encode(account, ownerChanges, ownerChangeSequence[account]++));
-        require(IVerifier(verifiers[ownerId][account]).verify(account, ownerId, digest, verifyData));
+        require(verifyIntent(account, ownerId, digest, verifyData));
         for (uint256 i; i < ownerChanges.length; i++) {
             ownerChanges[i].add
                 ? _addOwner(account, ownerChanges[i].owner)
@@ -124,24 +124,6 @@ contract AccountConfiguration {
     }
 
     ////////
-    // STORAGE VIEWS
-    ////////
-
-    function isValidSignature(address account, bytes32 ownerId, bytes32 hash, bytes calldata signature)
-        external
-        view
-        returns (bool)
-    {
-        address verifier = verifiers[ownerId][account];
-        if (verifier == address(0)) return false;
-        return IVerifier(verifier).verify(account, ownerId, hash, signature);
-    }
-
-    function isOwner(address account, bytes32 ownerId) public view returns (bool) {
-        return verifiers[ownerId][account] != address(0);
-    }
-
-    ////////
     // TRANSIENT STORAGE VIEWS
     ////////
 
@@ -160,27 +142,45 @@ contract AccountConfiguration {
     }
 
     ////////
+    // STORAGE VIEWS
+    ////////
+
+    function isOwner(address account, bytes32 ownerId) public view returns (bool) {
+        return verifiers[ownerId][account] != address(0);
+    }
+
+    function verifyIntent(address account, bytes32 ownerId, bytes32 hash, bytes calldata data)
+        public
+        view
+        returns (bool)
+    {
+        address verifier = verifiers[ownerId][account];
+        if (verifier == address(0)) return false;
+        return IVerifier(verifier).verifyIntent(account, ownerId, hash, data);
+    }
+
+    ////////
     // UTILITIES
     ////////
 
     function computeAddress(
         Owner[] calldata initialOwners,
-        bytes calldata initializeCall,
         uint256 nonce,
-        bytes calldata bytecode
+        bytes calldata bytecode,
+        bytes calldata initializeCall
     ) public view returns (address) {
-        bytes32 salt = computeSalt(initialOwners, initializeCall, nonce);
+        bytes32 salt = computeSalt(initialOwners, nonce, initializeCall);
         bytes32 bytecodeHash = keccak256(bytecode);
         bytes32 create2Hash = keccak256(abi.encodePacked(uint8(0xFF), address(this), salt, bytecodeHash));
         return address(uint160(uint256(create2Hash)));
     }
 
-    function computeSalt(Owner[] calldata initialOwners, bytes calldata initializeCall, uint256 nonce)
+    function computeSalt(Owner[] calldata initialOwners, uint256 nonce, bytes calldata initializeCall)
         public
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(initialOwners, initializeCall, nonce));
+        return keccak256(abi.encode(initialOwners, nonce, initializeCall));
     }
 
     ////////

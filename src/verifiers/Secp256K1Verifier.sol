@@ -4,9 +4,14 @@ pragma solidity ^0.8.0;
 import {IVerifier} from "./IVerifier.sol";
 
 contract Secp256K1Verifier is IVerifier {
-    function verify(address account, bytes32 ownerId, bytes32 hash, bytes calldata data) external pure returns (bool) {
+    function verifyIntent(address account, bytes32 ownerId, bytes32 hash, bytes calldata data)
+        external
+        pure
+        returns (bool)
+    {
         // Commitment must be a valid address
-        require(uint256(ownerId) < type(uint160).max && uint256(ownerId) > 0);
+        address owner = address(bytes20(ownerId));
+        require(bytes32(bytes20(owner)) == ownerId);
 
         // Signature must not be malleable
         (uint8 v, bytes32 r, bytes32 s) = abi.decode(data, (uint8, bytes32, bytes32));
@@ -16,6 +21,6 @@ contract Secp256K1Verifier is IVerifier {
         address recovered = ecrecover(hash, v, r, s);
 
         // Verify recovered address matches ownerId
-        return bytes32(bytes20(recovered)) == ownerId;
+        return recovered == owner;
     }
 }
