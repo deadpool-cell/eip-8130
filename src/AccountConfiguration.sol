@@ -172,6 +172,7 @@ contract AccountConfiguration {
     {
         address verifier = ownerConfigs[ownerId][account].verifier;
         if (verifier == address(0)) return false;
+        // TODO: ERC-7739 rehashing?
         return IVerifier(verifier).verifyIntent(account, ownerId, hash, data);
     }
 
