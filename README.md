@@ -1,66 +1,46 @@
-## Foundry
+# EIP-8130
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Reference implementation for [EIP-8130: Account Abstraction by Account Configuration](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8130.md).
 
-Foundry consists of:
+> **Warning** — This is an active work in progress. The spec is changing and the code has not been audited. Do not use in production.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## Overview
 
-## Documentation
+EIP-8130 defines a new transaction type and onchain system contract that together provide account abstraction — batching, gas sponsorship, and authentication using any cryptographic system. Accounts configure authorized keys and verifiers in the system contract; the protocol validates transactions using native implementations for recognized algorithms, and via sandboxed pure-function contracts for any other scheme.
 
-https://book.getfoundry.sh/
+## Contracts
+
+| Contract | Description |
+|----------|-------------|
+| `AccountConfiguration` | System contract for key authorization, account creation, and change sequencing |
+| `DefaultAccount` | Default wallet implementation auto-delegated to EOAs |
+| `SandboxLib` | Library for sandbox verifier bytecode validation |
+
+### Verifiers
+
+| Contract | Algorithm |
+|----------|-----------|
+| `K1Verifier` | secp256k1 (ECDSA) |
+| `P256Verifier` | secp256r1 / P-256 (raw) |
+| `WebAuthnVerifier` | secp256r1 / P-256 (WebAuthn) |
+| `DelegateVerifier` | Delegated validation (1-hop) |
+| `BLSVerifier` | BLS12-381 (sandbox) |
+| `Ed25519Verifier` | Ed25519 (sandbox) |
 
 ## Usage
 
 ### Build
 
 ```shell
-$ forge build
+forge build
 ```
 
 ### Test
 
 ```shell
-$ forge test
+forge test
 ```
 
-### Format
+## License
 
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+MIT

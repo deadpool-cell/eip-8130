@@ -1,152 +1,197 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IInitialized} from "./accounts/IInitialized.sol";
-import {IVerifier} from "./verifiers/IVerifier.sol";
+import {IERC1271} from "openzeppelin/interfaces/IERC1271.sol";
+import {IAuthVerifier} from "./verifiers/IAuthVerifier.sol";
+import {AccountConfigEIP712, KeyOperation, AccountOperation} from "./AccountConfigEIP712.sol";
+import {AccountDeployer, InitialKey} from "./AccountDeployer.sol";
 
-contract AccountConfiguration {
-    struct AccountConfig {
-        uint32 sequence;
-        bool locked;
-        uint40 unlockDelay;
-        uint40 unlockInitiatedAt;
+struct KeyConfig {
+    address verifier;
+    uint8 flags;
+}
+
+struct AccountPolicy {
+    uint8 flags;
+    uint32 unlockDelay;
+    uint32 unlockRequestedAt;
+}
+
+/// @notice Account Configuration system contract for EIP-8130.
+///         Manages key authorization, account creation, change sequencing, and account policy.
+contract AccountConfiguration is AccountConfigEIP712, AccountDeployer {
+    // ──────────────────────────────────────────────
+    //  Constants
+    // ──────────────────────────────────────────────
+
+    uint8 constant OP_AUTHORIZE_KEY = 0x01;
+    uint8 constant OP_REVOKE_KEY = 0x02;
+    uint8 constant OP_SET_ACCOUNT_POLICY = 0x03;
+    uint8 constant OP_REQUEST_UNLOCK = 0x04;
+    uint8 constant OP_UNLOCK = 0x05;
+
+    uint8 constant FLAG_DISABLE_KEY_ADMIN = 0x01;
+    uint8 constant FLAG_DISABLE_GAS_PAYMENT = 0x02;
+
+    uint8 constant POLICY_LOCKED = 0x01;
+
+    // ──────────────────────────────────────────────
+    //  Storage
+    // ──────────────────────────────────────────────
+
+    mapping(address account => mapping(bytes32 keyId => KeyConfig)) internal _keyConfigs;
+    mapping(address account => AccountPolicy) internal _accountPolicies;
+
+    struct ChangeSequences {
+        uint64 multichain; // chain_id 0
+        uint64 local;      // chain_id == block.chainid
     }
 
-    struct OwnerConfig {
-        address verifier;
-    }
+    mapping(address account => ChangeSequences) internal _changeSequences;
 
-    struct Owner {
-        bytes32 id;
-        OwnerConfig config;
-    }
+    // ──────────────────────────────────────────────
+    //  Events
+    // ──────────────────────────────────────────────
 
-    struct OwnerChange {
-        bool add; // true if adding owner, false if removing owner
-        Owner owner;
-    }
+    event KeyAuthorized(address indexed account, bytes32 indexed keyId, address verifier, uint8 flags);
+    event KeyRevoked(address indexed account, bytes32 indexed keyId);
+    event AccountCreated(address indexed account, bytes32 userSalt, bytes32 codeHash);
+    event ChangeApplied(address indexed account, uint64 sequence);
+    event AccountPolicyChanged(address indexed account, uint8 flags, uint32 unlockDelay);
+    event AccountLocked(address indexed account, uint32 unlockDelay);
+    event UnlockRequested(address indexed account, uint32 effectiveAt);
+    event AccountUnlocked(address indexed account);
 
-    mapping(address account => AccountConfig config) public accountConfigs;
-    mapping(bytes32 ownerId => mapping(address account => OwnerConfig config)) public ownerConfigs;
+    // ══════════════════════════════════════════════
+    //  ACCOUNT CREATION
+    // ══════════════════════════════════════════════
 
-    event AccountCreated(address indexed account, bytes32 bytecodeHash);
-    event OwnerAdded(address indexed account, bytes32 ownerId, address verifier);
-    event OwnerRemoved(address indexed account, bytes32 ownerId);
-    event SequenceConsumed(address indexed account, uint32 sequence);
-
-    ////////
-    // INITIALIZATION
-    ////////
-
-    function createAccount(
-        Owner[] calldata initialOwners,
-        uint256 nonce,
-        bytes calldata bytecode,
-        bytes calldata initializeCall // helpful for ERC-1167 proxies
-    ) external returns (address account) {
-        // Early return if account deployed
-        account = computeAddress(initialOwners, nonce, bytecode, initializeCall);
+    /// @notice Deploy a new account with initial keys configured using safe defaults.
+    function createAccount(bytes32 userSalt, bytes calldata bytecode, InitialKey[] calldata initialKeys)
+        external
+        returns (address account)
+    {
+        account = getAddress(userSalt, bytecode, initialKeys);
         if (account.code.length > 0) return account;
 
-        // Must define at least one owner
-        uint256 ownerCount = initialOwners.length;
-        require(ownerCount > 0);
+        require(initialKeys.length > 0);
 
-        // Configure intitial owners
-        bytes32 previousOwnerId = bytes32(0);
-        for (uint256 i; i < initialOwners.length; i++) {
-            // Require owners sorted by id to enforce same set of owners produce same address
-            require(initialOwners[i].id > previousOwnerId);
-            previousOwnerId = initialOwners[i].id;
-            _addOwner(account, initialOwners[i]);
+        bytes32 previousKeyId;
+        for (uint256 i; i < initialKeys.length; i++) {
+            require(initialKeys[i].keyId > previousKeyId);
+            previousKeyId = initialKeys[i].keyId;
+            require(initialKeys[i].verifier != address(0));
+
+            _keyConfigs[account][initialKeys[i].keyId] = KeyConfig(initialKeys[i].verifier, 0);
+            emit KeyAuthorized(account, initialKeys[i].keyId, initialKeys[i].verifier, 0);
         }
 
-        // Create account
-        bytes32 salt = computeSalt(initialOwners, nonce, initializeCall);
-        assembly {
-            let ptr := mload(0x40)
-            calldatacopy(ptr, bytecode.offset, bytecode.length)
-            mstore(0x40, add(ptr, bytecode.length))
-            pop(create2(0, ptr, bytecode.length, salt))
-        }
-        emit AccountCreated(account, keccak256(bytecode));
+        _accountPolicies[account] = AccountPolicy(0, 0, 0);
 
-        // Initialize account
-        if (initializeCall.length > 0) {
-            (bool success,) = account.call(initializeCall);
-            require(success);
-        }
-
-        // Assert account is initialized to mitigate undeployed implementations
-        require(IInitialized(account).initialized());
+        _deploy(bytecode, initialKeys, userSalt);
+        emit AccountCreated(account, userSalt, keccak256(bytecode));
     }
 
-    ////////
-    // OWNER MANAGEMENT
-    ////////
+    // ══════════════════════════════════════════════
+    //  PORTABLE CHANGES (EVM path — ERC-1271 authorized)
+    // ══════════════════════════════════════════════
 
-    function addOwner(Owner calldata owner) external {
-        _addOwner(msg.sender, owner);
-    }
-
-    function removeOwner(bytes32 ownerId) external {
-        _removeOwner(msg.sender, ownerId);
-    }
-
-    function applyOwnerChanges(
+    /// @notice Apply key operations authorized by the account's isValidSignature.
+    function applyKeyChange(
         address account,
-        OwnerChange[] calldata ownerChanges,
-        bytes32 ownerId,
-        bytes calldata verifyData
+        uint64 chainId,
+        uint64 sequence,
+        KeyOperation[] calldata operations,
+        bytes calldata authorizerAuth
     ) external {
-        bytes32 digest = keccak256(abi.encode(account, ownerChanges, _consumeSequence(account)));
-        require(verifyIntent(account, ownerId, digest, verifyData));
-        for (uint256 i; i < ownerChanges.length; i++) {
-            ownerChanges[i].add
-                ? _addOwner(account, ownerChanges[i].owner)
-                : _removeOwner(account, ownerChanges[i].owner.id);
+        _requireNotLocked(account);
+
+        require(chainId == 0 || chainId == block.chainid);
+
+        require(_getSequence(account, chainId) == sequence);
+        _setSequence(account, chainId, sequence + 1);
+
+        bytes32 digest = _computeKeyChangeDigest(account, chainId, sequence, operations);
+
+        bytes32 authorizerKeyId = abi.decode(authorizerAuth, (bytes32));
+        require((_keyConfigs[account][authorizerKeyId].flags & FLAG_DISABLE_KEY_ADMIN) == 0);
+
+        _requireValidSignature(account, digest, authorizerAuth);
+
+        for (uint256 i; i < operations.length; i++) {
+            _applyKeyOperation(account, operations[i]);
         }
+        emit ChangeApplied(account, sequence);
     }
 
-    function consumeSequence() external returns (uint32 sequence) {
-        return _consumeSequence(msg.sender);
-    }
+    /// @notice Apply account policy operations authorized by the account's isValidSignature.
+    function applyAccountChange(
+        address account,
+        uint64 chainId,
+        uint64 sequence,
+        AccountOperation[] calldata operations,
+        bytes calldata authorizerAuth
+    ) external {
+        _requireNotLockedOrUnlockOps(account, operations);
 
-    function multicall(bytes[] calldata data) external {
-        for (uint256 i; i < data.length; i++) {
-            (bool success,) = address(this).delegatecall(data[i]);
-            require(success);
+        require(chainId == 0 || chainId == block.chainid);
+
+        for (uint256 i; i < operations.length; i++) {
+            if (operations[i].opType == OP_REQUEST_UNLOCK || operations[i].opType == OP_UNLOCK) {
+                require(chainId != 0);
+            }
         }
+
+        require(_getSequence(account, chainId) == sequence);
+        _setSequence(account, chainId, sequence + 1);
+
+        bytes32 digest = _computeAccountChangeDigest(account, chainId, sequence, operations);
+
+        bytes32 authorizerKeyId = abi.decode(authorizerAuth, (bytes32));
+        require((_keyConfigs[account][authorizerKeyId].flags & FLAG_DISABLE_KEY_ADMIN) == 0);
+
+        _requireValidSignature(account, digest, authorizerAuth);
+
+        for (uint256 i; i < operations.length; i++) {
+            _applyAccountOperation(account, operations[i]);
+        }
+        emit ChangeApplied(account, sequence);
     }
 
-    function lockOwnerChanges(uint40 unlockDelay) external {
-        require(unlockDelay > 0);
-        AccountConfig memory accountConfig = accountConfigs[msg.sender];
-        require(!accountConfig.locked);
-        accountConfig.locked = true;
-        accountConfig.unlockDelay = unlockDelay;
-        accountConfigs[msg.sender] = accountConfig;
+    // ══════════════════════════════════════════════
+    //  READ FUNCTIONS
+    // ══════════════════════════════════════════════
+
+    function isAuthorized(address account, bytes32 keyId) external view returns (bool) {
+        return _keyConfigs[account][keyId].verifier != address(0);
     }
 
-    function initiateUnlockOwnerChanges() external {
-        AccountConfig memory accountConfig = accountConfigs[msg.sender];
-        require(accountConfig.locked && accountConfig.unlockInitiatedAt == 0);
-        accountConfig.unlockInitiatedAt = uint40(block.timestamp) + accountConfig.unlockDelay;
-        accountConfigs[msg.sender] = accountConfig;
+    function getKeyData(address account, bytes32 keyId) public view returns (address verifier, uint8 flags) {
+        KeyConfig storage kc = _keyConfigs[account][keyId];
+        return (kc.verifier, kc.flags);
     }
 
-    function finalizeUnlockOwnerChanges() external {
-        AccountConfig memory accountConfig = accountConfigs[msg.sender];
-        require(accountConfig.locked && block.timestamp > accountConfig.unlockInitiatedAt + accountConfig.unlockDelay);
-        accountConfig.locked = false;
-        accountConfig.unlockInitiatedAt = 0;
-        accountConfigs[msg.sender] = accountConfig;
+    function getAccountPolicy(address account)
+        public
+        view
+        returns (bool locked, uint32 unlockDelay, uint32 unlockRequestedAt)
+    {
+        AccountPolicy storage p = _accountPolicies[account];
+        locked = (p.flags & POLICY_LOCKED) != 0;
+        unlockDelay = p.unlockDelay;
+        unlockRequestedAt = p.unlockRequestedAt;
     }
 
-    ////////
-    // TRANSIENT STORAGE VIEWS
-    ////////
+    function getChangeSequence(address account, uint64 chainId) external view returns (uint64) {
+        return _getSequence(account, chainId);
+    }
 
+    // ══════════════════════════════════════════════
+    //  TRANSACTION CONTEXT (EIP-1153 transient storage)
+    // ══════════════════════════════════════════════
+
+    /// @notice Returns the current AA transaction's gas payer address.
+    ///         Only meaningful during AA transaction execution on 8130 chains.
     function getCurrentPayer() public view returns (address payer) {
         bytes32 slot = keccak256("context.payer");
         assembly {
@@ -154,78 +199,105 @@ contract AccountConfiguration {
         }
     }
 
-    function getCurrentOwnerId() public view returns (bytes32 ownerId) {
-        bytes32 slot = keccak256("context.ownerId");
+    /// @notice Returns the current AA transaction's signer key info.
+    ///         Protocol writes keyId to transient storage; verifier + flags looked up from persistent storage.
+    ///         On non-8130 chains, returns zero values (no protocol writes to transient storage).
+    function getCurrentSigner() public view returns (bytes32 keyId, address, uint8) {
+        bytes32 signerSlot = keccak256("context.signer");
         assembly {
-            ownerId := tload(slot)
+            keyId := tload(signerSlot)
         }
     }
 
-    ////////
-    // STORAGE VIEWS
-    ////////
+    // ══════════════════════════════════════════════
+    //  SIGNATURE VERIFICATION (for EVM-initiated checks)
+    // ══════════════════════════════════════════════
 
-    function isOwner(address account, bytes32 ownerId) public view returns (bool) {
-        return ownerConfigs[ownerId][account].verifier != address(0);
-    }
-
-    function verifyIntent(address account, bytes32 ownerId, bytes32 hash, bytes calldata data)
-        public
-        view
-        returns (bool)
-    {
-        address verifier = ownerConfigs[ownerId][account].verifier;
+    /// @notice Verify a signature against a key on an account by calling the verifier.
+    function verify(address account, bytes32 keyId, bytes32 hash, bytes calldata data) public view returns (bool) {
+        address verifier = _keyConfigs[account][keyId].verifier;
         if (verifier == address(0)) return false;
-        // TODO: ERC-7739 rehashing?
-        return IVerifier(verifier).verifyIntent(account, ownerId, hash, data);
+        return IAuthVerifier(verifier).verify(account, keyId, hash, data);
     }
 
-    ////////
-    // UTILITIES
-    ////////
+    // ══════════════════════════════════════════════
+    //  INTERNALS
+    // ══════════════════════════════════════════════
 
-    function computeAddress(
-        Owner[] calldata initialOwners,
-        uint256 nonce,
-        bytes calldata bytecode,
-        bytes calldata initializeCall
-    ) public view returns (address) {
-        bytes32 salt = computeSalt(initialOwners, nonce, initializeCall);
-        bytes32 bytecodeHash = keccak256(bytecode);
-        bytes32 create2Hash = keccak256(abi.encodePacked(uint8(0xFF), address(this), salt, bytecodeHash));
-        return address(uint160(uint256(create2Hash)));
+    function _requireValidSignature(address account, bytes32 digest, bytes calldata authorizerAuth) internal view {
+        require(account.code.length > 0);
+        (bool success, bytes memory result) =
+            account.staticcall(abi.encodeWithSignature("isValidSignature(bytes32,bytes)", digest, authorizerAuth));
+        require(success && result.length >= 32);
+        require(abi.decode(result, (bytes4)) == IERC1271.isValidSignature.selector);
     }
 
-    function computeSalt(Owner[] calldata initialOwners, uint256 nonce, bytes calldata initializeCall)
-        public
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(initialOwners, nonce, initializeCall));
+    function _getSequence(address account, uint64 chainId) internal view returns (uint64) {
+        ChangeSequences storage s = _changeSequences[account];
+        return chainId == 0 ? s.multichain : s.local;
     }
 
-    ////////
-    // INTERNALS
-    ////////
-
-    function _addOwner(address account, Owner calldata owner) internal {
-        address verifier = owner.config.verifier;
-        require(verifier != address(0) && verifier.code.length > 0);
-        require(!accountConfigs[account].locked);
-        require(!isOwner(account, owner.id));
-        ownerConfigs[owner.id][account] = OwnerConfig({verifier: verifier});
-        emit OwnerAdded(account, owner.id, verifier);
+    function _setSequence(address account, uint64 chainId, uint64 value) internal {
+        ChangeSequences storage s = _changeSequences[account];
+        if (chainId == 0) {
+            s.multichain = value;
+        } else {
+            s.local = value;
+        }
     }
 
-    function _removeOwner(address account, bytes32 ownerId) internal {
-        require(!accountConfigs[account].locked);
-        require(isOwner(account, ownerId));
-        delete ownerConfigs[ownerId][account];
-        emit OwnerRemoved(account, ownerId);
+    function _requireNotLocked(address account) internal view {
+        require((_accountPolicies[account].flags & POLICY_LOCKED) == 0);
     }
 
-    function _consumeSequence(address account) internal returns (uint32 sequence) {
-        sequence = accountConfigs[account].sequence++;
-        emit SequenceConsumed(account, sequence);
+    function _requireNotLockedOrUnlockOps(address account, AccountOperation[] calldata operations) internal view {
+        if ((_accountPolicies[account].flags & POLICY_LOCKED) != 0) {
+            for (uint256 i; i < operations.length; i++) {
+                require(operations[i].opType == OP_REQUEST_UNLOCK || operations[i].opType == OP_UNLOCK);
+            }
+        }
+    }
+
+    function _applyKeyOperation(address account, KeyOperation calldata op) internal {
+        KeyConfig storage kc = _keyConfigs[account][op.keyId];
+        if (op.opType == OP_AUTHORIZE_KEY) {
+            require(op.verifier != address(0));
+            require(kc.verifier == address(0));
+            kc.verifier = op.verifier;
+            kc.flags = op.flags;
+            emit KeyAuthorized(account, op.keyId, op.verifier, op.flags);
+        } else if (op.opType == OP_REVOKE_KEY) {
+            require(kc.verifier != address(0));
+            delete _keyConfigs[account][op.keyId];
+            emit KeyRevoked(account, op.keyId);
+        } else {
+            revert();
+        }
+    }
+
+    function _applyAccountOperation(address account, AccountOperation calldata op) internal {
+        AccountPolicy storage p = _accountPolicies[account];
+        if (op.opType == OP_SET_ACCOUNT_POLICY) {
+            p.flags = op.flags;
+            p.unlockDelay = op.unlockDelay;
+            p.unlockRequestedAt = 0;
+            emit AccountPolicyChanged(account, op.flags, op.unlockDelay);
+            if ((op.flags & POLICY_LOCKED) != 0) {
+                emit AccountLocked(account, op.unlockDelay);
+            }
+        } else if (op.opType == OP_REQUEST_UNLOCK) {
+            require((p.flags & POLICY_LOCKED) != 0 && p.unlockRequestedAt == 0);
+            p.unlockRequestedAt = uint32(block.timestamp);
+            emit UnlockRequested(account, uint32(block.timestamp) + p.unlockDelay);
+        } else if (op.opType == OP_UNLOCK) {
+            require((p.flags & POLICY_LOCKED) != 0 && p.unlockRequestedAt != 0);
+            require(block.timestamp >= p.unlockRequestedAt + p.unlockDelay);
+            p.flags = p.flags & ~uint8(POLICY_LOCKED);
+            p.unlockDelay = 0;
+            p.unlockRequestedAt = 0;
+            emit AccountUnlocked(account);
+        } else {
+            revert();
+        }
     }
 }

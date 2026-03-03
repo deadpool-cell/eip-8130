@@ -2,6 +2,7 @@
 optimizer = true
 remappings = [
     "openzeppelin/=lib/openzeppelin-contracts/contracts/",
+    "solady/=lib/solady/src/",
 ]
 
 [lint]
