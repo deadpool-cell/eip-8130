@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {AccountOperation} from "../../../src/AccountConfigEIP712.sol";
+import {AccountOperation} from "../../../src/AccountConfigDigest.sol";
 import {DefaultAccount} from "../../../src/accounts/DefaultAccount.sol";
 import {AccountConfigurationTest} from "../../lib/AccountConfigurationTest.sol";
 
@@ -33,7 +33,8 @@ contract DefaultAccountTest is AccountConfigurationTest {
         vm.deal(account, 1 ether);
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
-        calls[0] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (42)), value: 0});
+        calls[0] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (42)), value: 0});
 
         vm.prank(account);
         DefaultAccount(payable(account)).executeBatch(calls);
@@ -45,8 +46,10 @@ contract DefaultAccountTest is AccountConfigurationTest {
         (address account,) = _createK1Account(OWNER_PK);
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](2);
-        calls[0] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (10)), value: 0});
-        calls[1] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (20)), value: 0});
+        calls[0] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (10)), value: 0});
+        calls[1] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (20)), value: 0});
 
         vm.prank(account);
         DefaultAccount(payable(account)).executeBatch(calls);
@@ -60,9 +63,7 @@ contract DefaultAccountTest is AccountConfigurationTest {
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
         calls[0] = DefaultAccount.Call({
-            target: address(target),
-            data: abi.encodeCall(MockTarget.setValue, (1)),
-            value: 0.5 ether
+            target: address(target), data: abi.encodeCall(MockTarget.setValue, (1)), value: 0.5 ether
         });
 
         vm.prank(account);
@@ -75,7 +76,8 @@ contract DefaultAccountTest is AccountConfigurationTest {
         (address account,) = _createK1Account(OWNER_PK);
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
-        calls[0] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (1)), value: 0});
+        calls[0] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (1)), value: 0});
 
         vm.prank(address(0xdead));
         vm.expectRevert();
@@ -86,7 +88,8 @@ contract DefaultAccountTest is AccountConfigurationTest {
         (address account,) = _createK1Account(OWNER_PK);
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
-        calls[0] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.reverting, ()), value: 0});
+        calls[0] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.reverting, ()), value: 0});
 
         vm.prank(account);
         vm.expectRevert();
@@ -106,9 +109,7 @@ contract DefaultAccountTest is AccountConfigurationTest {
         // Try to send ETH — should revert
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
         calls[0] = DefaultAccount.Call({
-            target: address(target),
-            data: abi.encodeCall(MockTarget.setValue, (1)),
-            value: 0.1 ether
+            target: address(target), data: abi.encodeCall(MockTarget.setValue, (1)), value: 0.1 ether
         });
 
         vm.prank(account);
@@ -122,7 +123,8 @@ contract DefaultAccountTest is AccountConfigurationTest {
         _lockAccount(account, OWNER_PK, keyId);
 
         DefaultAccount.Call[] memory calls = new DefaultAccount.Call[](1);
-        calls[0] = DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (99)), value: 0});
+        calls[0] =
+            DefaultAccount.Call({target: address(target), data: abi.encodeCall(MockTarget.setValue, (99)), value: 0});
 
         vm.prank(account);
         DefaultAccount(payable(account)).executeBatch(calls);
@@ -172,7 +174,7 @@ contract DefaultAccountTest is AccountConfigurationTest {
         AccountOperation[] memory ops = new AccountOperation[](1);
         ops[0] = AccountOperation({
             opType: 0x03, // OP_SET_ACCOUNT_POLICY
-            flags: 0x01,  // POLICY_LOCKED
+            flags: 0x01, // POLICY_LOCKED
             unlockDelay: 1 hours
         });
 

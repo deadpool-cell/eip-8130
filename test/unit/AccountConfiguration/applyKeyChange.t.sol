@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {KeyOperation, AccountOperation} from "../../../src/AccountConfigEIP712.sol";
+import {KeyOperation, AccountOperation} from "../../../src/AccountConfigDigest.sol";
 import {AccountConfigurationTest} from "../../lib/AccountConfigurationTest.sol";
 
 contract ApplyKeyChangeTest is AccountConfigurationTest {
@@ -15,12 +15,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
         bytes32 newKeyId = bytes32(bytes20(newKeySigner));
 
         KeyOperation[] memory ops = new KeyOperation[](1);
-        ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: newKeyId,
-            flags: 0
-        });
+        ops[0] = KeyOperation({opType: 0x01, verifier: address(k1Verifier), keyId: newKeyId, flags: 0});
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -72,12 +67,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
 
         // Now revoke it
         KeyOperation[] memory ops = new KeyOperation[](1);
-        ops[0] = KeyOperation({
-            opType: 0x02,
-            verifier: address(0),
-            keyId: newKeyId,
-            flags: 0
-        });
+        ops[0] = KeyOperation({opType: 0x02, verifier: address(0), keyId: newKeyId, flags: 0});
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -128,10 +118,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
 
         KeyOperation[] memory ops = new KeyOperation[](1);
         ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(300))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(300))), flags: 0
         });
 
         uint64 chainId = uint64(block.chainid);
@@ -151,10 +138,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
 
         KeyOperation[] memory ops = new KeyOperation[](1);
         ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(300))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(300))), flags: 0
         });
 
         uint64 chainId = uint64(block.chainid);
@@ -176,10 +160,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
         // Try to use the non-admin key to authorize another key
         KeyOperation[] memory ops = new KeyOperation[](1);
         ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(302))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(302))), flags: 0
         });
 
         uint64 chainId = uint64(block.chainid);
@@ -196,12 +177,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
 
         // Try to authorize a key that already exists (the owner key)
         KeyOperation[] memory ops = new KeyOperation[](1);
-        ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: ownerKeyId,
-            flags: 0
-        });
+        ops[0] = KeyOperation({opType: 0x01, verifier: address(k1Verifier), keyId: ownerKeyId, flags: 0});
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -218,12 +194,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
         bytes32 nonExistentKeyId = bytes32(bytes20(vm.addr(999)));
 
         KeyOperation[] memory ops = new KeyOperation[](1);
-        ops[0] = KeyOperation({
-            opType: 0x02,
-            verifier: address(0),
-            keyId: nonExistentKeyId,
-            flags: 0
-        });
+        ops[0] = KeyOperation({opType: 0x02, verifier: address(0), keyId: nonExistentKeyId, flags: 0});
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -239,10 +210,7 @@ contract ApplyKeyChangeTest is AccountConfigurationTest {
 
         KeyOperation[] memory ops = new KeyOperation[](1);
         ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(300))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(300))), flags: 0
         });
 
         uint64 chainId = uint64(block.chainid);

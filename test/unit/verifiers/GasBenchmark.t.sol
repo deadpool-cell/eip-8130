@@ -69,7 +69,8 @@ contract GasBenchmarkTest is Test {
         // Create the delegate account (where we look up the nested key)
         InitialKey[] memory keysA = new InitialKey[](1);
         keysA[0] = InitialKey({verifier: address(k1), keyId: keyIdA});
-        bytes memory bytecode = abi.encodePacked(hex"363d3d373d3d3d363d73", defaultImpl, hex"5af43d82803e903d91602b57fd5bf3");
+        bytes memory bytecode =
+            abi.encodePacked(hex"363d3d373d3d3d363d73", defaultImpl, hex"5af43d82803e903d91602b57fd5bf3");
         address accountA = config.createAccount(bytes32("benchA"), bytecode, keysA);
 
         // delegateKeyId encodes the delegate account address (left-aligned)

@@ -17,104 +17,102 @@ contract SandboxLibTest is Test {
 
     // ── Bytecode construction ──
 
-    function test_wrapperBytecodeIs55Bytes() public view {
-        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 10, 0);
-        assertEq(code.length, 55);
+    function test_wrapperBytecodeIs52Bytes() public view {
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 0);
+        assertEq(code.length, 52);
     }
 
     function test_wrapperBytecodeStartsWithSandboxHeader() public view {
-        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 10, 0);
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 0);
 
-        // PUSH1 9, JUMP
+        // PUSH1 6, JUMP
         assertEq(uint8(code[0]), 0x60);
-        assertEq(uint8(code[1]), 0x09);
+        assertEq(uint8(code[1]), 0x06);
         assertEq(uint8(code[2]), 0x56);
 
         // Magic "8130"
         assertEq(uint8(code[3]), 0x81);
         assertEq(uint8(code[4]), 0x30);
 
-        // Gas limit = 10 (0x00000a)
-        assertEq(uint8(code[5]), 0x00);
-        assertEq(uint8(code[6]), 0x00);
-        assertEq(uint8(code[7]), 0x0a);
-
         // Version = 0
-        assertEq(uint8(code[8]), 0x00);
+        assertEq(uint8(code[5]), 0x00);
 
         // JUMPDEST
-        assertEq(uint8(code[9]), 0x5B);
+        assertEq(uint8(code[6]), 0x5B);
     }
 
     function test_wrapperBytecodeContainsPUSH20WithAddress() public view {
-        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 10, 0);
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 0);
 
-        // PUSH20 opcode at offset 19
-        assertEq(uint8(code[19]), 0x73);
+        // PUSH20 opcode at offset 16
+        assertEq(uint8(code[16]), 0x73);
 
-        // Extract 20-byte address from offsets 20-39
+        // Extract 20-byte address from offsets 17-36
         address embedded;
         assembly {
-            embedded := shr(96, mload(add(add(code, 0x20), 20)))
+            embedded := shr(96, mload(add(add(code, 0x20), 17)))
         }
         assertEq(embedded, address(k1));
     }
 
     function test_wrapperBytecodeEndsWithJUMPDESTAndRETURN() public view {
-        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 10, 0);
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 0);
 
-        // REVERT at offset 52, JUMPDEST at 53, RETURN at 54
-        assertEq(uint8(code[52]), 0xFD); // REVERT
-        assertEq(uint8(code[53]), 0x5B); // JUMPDEST
-        assertEq(uint8(code[54]), 0xF3); // RETURN
+        // REVERT at offset 49, JUMPDEST at 50, RETURN at 51
+        assertEq(uint8(code[49]), 0xFD); // REVERT
+        assertEq(uint8(code[50]), 0x5B); // JUMPDEST
+        assertEq(uint8(code[51]), 0xF3); // RETURN
     }
 
     function test_wrapperBytecodeUsesSTATICCALL() public view {
-        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 10, 0);
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 0);
 
-        // GAS at offset 40, STATICCALL at offset 41
-        assertEq(uint8(code[40]), 0x5A); // GAS
-        assertEq(uint8(code[41]), 0xFA); // STATICCALL
+        // GAS at offset 37, STATICCALL at offset 38
+        assertEq(uint8(code[37]), 0x5A); // GAS
+        assertEq(uint8(code[38]), 0xFA); // STATICCALL
     }
 
-    function test_deploymentCodeIs69Bytes() public view {
-        bytes memory code = SandboxLib.deploymentCode(address(k1), 10, 0);
-        assertEq(code.length, 14 + 55);
+    function test_deploymentCodeIs66Bytes() public view {
+        bytes memory code = SandboxLib.deploymentCode(address(k1), 0);
+        assertEq(code.length, 14 + 52);
+    }
+
+    function test_wrapperBytecodeWithNonZeroVersion() public view {
+        bytes memory code = SandboxLib.wrapperBytecode(address(k1), 1);
+        assertEq(uint8(code[5]), 0x01);
     }
 
     // ── Deploy and parse ──
 
     function test_deployAndParseSandboxHeader() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("test"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("test"));
 
-        (uint24 gasLimitInK, uint8 version, address wrapped, bool valid) =
-            SandboxLib.parseSandboxHeader(sandbox);
+        (uint8 version, address wrapped, bool valid) = SandboxLib.parseSandboxHeader(sandbox);
 
         assertTrue(valid);
-        assertEq(gasLimitInK, 10);
         assertEq(version, 0);
         assertEq(wrapped, address(k1));
     }
 
-    function test_deployedCodeIs55Bytes() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("size"));
-        assertEq(sandbox.code.length, 55);
+    function test_deployedCodeIs52Bytes() public {
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("size"));
+        assertEq(sandbox.code.length, 52);
     }
 
-    function test_parseSandboxHeader_invalidIfTooShort() public {
-        (,,, bool valid) = SandboxLib.parseSandboxHeader(address(k1));
+    function test_parseSandboxHeader_invalidIfTooShort() public view {
+        (,, bool valid) = SandboxLib.parseSandboxHeader(address(k1));
         assertFalse(valid);
     }
 
     function test_parseSandboxHeader_invalidIfNoMagic() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("magic_test"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("magic_test"));
 
         // Deploy a regular contract and try to parse it — should be invalid
-        (,,, bool valid) = SandboxLib.parseSandboxHeader(address(new K1Verifier()));
+        (,, bool valid) = SandboxLib.parseSandboxHeader(address(new K1Verifier()));
         assertFalse(valid);
 
         // The actual sandbox should be valid
-        (,,, valid) = SandboxLib.parseSandboxHeader(sandbox);
+        (,, valid) = SandboxLib.parseSandboxHeader(sandbox);
         assertTrue(valid);
     }
 
@@ -122,27 +120,27 @@ contract SandboxLibTest is Test {
 
     function test_computeAddressMatchesDeploy() public {
         bytes32 salt = bytes32("predict");
-        address predicted = SandboxLib.computeAddress(address(this), address(k1), 10, 0, salt);
-        address actual = SandboxLib.deploy(address(k1), 10, 0, salt);
+        address predicted = SandboxLib.computeAddress(address(this), address(k1), 0, salt);
+        address actual = SandboxLib.deploy(address(k1), 0, salt);
         assertEq(predicted, actual);
     }
 
     function test_differentSaltsProduceDifferentAddresses() public view {
-        address a = SandboxLib.computeAddress(address(this), address(k1), 10, 0, bytes32("a"));
-        address b = SandboxLib.computeAddress(address(this), address(k1), 10, 0, bytes32("b"));
+        address a = SandboxLib.computeAddress(address(this), address(k1), 0, bytes32("a"));
+        address b = SandboxLib.computeAddress(address(this), address(k1), 0, bytes32("b"));
         assertTrue(a != b);
     }
 
-    function test_differentGasLimitsProduceDifferentAddresses() public view {
-        address a = SandboxLib.computeAddress(address(this), address(k1), 10, 0, bytes32("same"));
-        address b = SandboxLib.computeAddress(address(this), address(k1), 20, 0, bytes32("same"));
+    function test_differentVersionsProduceDifferentAddresses() public view {
+        address a = SandboxLib.computeAddress(address(this), address(k1), 0, bytes32("same"));
+        address b = SandboxLib.computeAddress(address(this), address(k1), 1, bytes32("same"));
         assertTrue(a != b);
     }
 
     // ── Functional: sandbox wrapper forwards calls correctly ──
 
     function test_sandboxWrapperForwardsVerifyCalls() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("fwd"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("fwd"));
 
         uint256 pk = 0xBEEF;
         address signer = vm.addr(pk);
@@ -150,14 +148,12 @@ contract SandboxLibTest is Test {
         bytes32 hash = keccak256("test message");
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, hash);
 
-        bool result = IAuthVerifier(sandbox).verify(
-            address(0x1), keyId, hash, abi.encodePacked(r, s, v)
-        );
+        bool result = IAuthVerifier(sandbox).verify(address(0x1), keyId, hash, abi.encodePacked(r, s, v));
         assertTrue(result);
     }
 
     function test_sandboxWrapperReturnsFalseForBadSignature() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("bad"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("bad"));
 
         uint256 pk = 0xBEEF;
         address signer = vm.addr(pk);
@@ -166,26 +162,22 @@ contract SandboxLibTest is Test {
         bytes32 wrongHash = keccak256("wrong");
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, wrongHash);
 
-        bool result = IAuthVerifier(sandbox).verify(
-            address(0x1), keyId, hash, abi.encodePacked(r, s, v)
-        );
+        bool result = IAuthVerifier(sandbox).verify(address(0x1), keyId, hash, abi.encodePacked(r, s, v));
         assertFalse(result);
     }
 
     function test_sandboxWrapperPropagatesReverts() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("revert"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("revert"));
 
         // K1Verifier reverts if keyId doesn't match bytes32(bytes20(addr)) pattern
         bytes32 badKeyId = bytes32(uint256(0xDEAD));
 
         vm.expectRevert();
-        IAuthVerifier(sandbox).verify(
-            address(0x1), badKeyId, bytes32(0), hex"00"
-        );
+        IAuthVerifier(sandbox).verify(address(0x1), badKeyId, bytes32(0), hex"00");
     }
 
     function test_sandboxWrapperMatchesDirectResult() public {
-        address sandbox = SandboxLib.deploy(address(k1), 10, 0, bytes32("match"));
+        address sandbox = SandboxLib.deploy(address(k1), 0, bytes32("match"));
 
         uint256 pk = 0xCAFE;
         address signer = vm.addr(pk);

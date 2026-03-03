@@ -53,12 +53,10 @@ contract SmokeTest is Script {
         console.log("=== ALL SMOKE TESTS PASSED ===");
     }
 
-    function _createAccount(
-        AccountConfiguration config,
-        address k1Verifier,
-        address defaultImpl,
-        bytes32 keyId
-    ) internal returns (address) {
+    function _createAccount(AccountConfiguration config, address k1Verifier, address defaultImpl, bytes32 keyId)
+        internal
+        returns (address)
+    {
         InitialKey[] memory keys = new InitialKey[](1);
         keys[0] = InitialKey({keyId: keyId, verifier: k1Verifier});
 
@@ -86,10 +84,9 @@ contract SmokeTest is Script {
     }
 
     function _checkSandboxHeader(address sandbox, address expectedImpl) internal view {
-        (uint24 gasLimitInK, uint8 version, address wrapped, bool valid) = SandboxLib.parseSandboxHeader(sandbox);
+        (uint8 version, address wrapped, bool valid) = SandboxLib.parseSandboxHeader(sandbox);
         require(valid, "invalid sandbox header");
         require(wrapped == expectedImpl, "wrapper points to wrong impl");
-        require(gasLimitInK > 0, "gas limit should be > 0");
         require(version == 0, "version should be 0");
     }
 }

@@ -38,9 +38,7 @@ contract DelegateVerifierTest is AccountConfigurationTest {
         bytes memory nestedData = abi.encode(delegateKeyId, delegateSig);
 
         // Verify through delegate verifier
-        assertTrue(
-            delegateVerifier.verify(delegatorAccount, delegateRefKeyId, hash, nestedData)
-        );
+        assertTrue(delegateVerifier.verify(delegatorAccount, delegateRefKeyId, hash, nestedData));
     }
 
     function test_verify_revertsOnInvalidKeyId() public {

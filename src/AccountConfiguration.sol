@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {IERC1271} from "openzeppelin/interfaces/IERC1271.sol";
 import {IAuthVerifier} from "./verifiers/IAuthVerifier.sol";
-import {AccountConfigEIP712, KeyOperation, AccountOperation} from "./AccountConfigEIP712.sol";
+import {AccountConfigDigest, KeyOperation, AccountOperation} from "./AccountConfigDigest.sol";
 import {AccountDeployer, InitialKey} from "./AccountDeployer.sol";
 
 struct KeyConfig {
@@ -19,7 +19,7 @@ struct AccountPolicy {
 
 /// @notice Account Configuration system contract for EIP-8130.
 ///         Manages key authorization, account creation, change sequencing, and account policy.
-contract AccountConfiguration is AccountConfigEIP712, AccountDeployer {
+contract AccountConfiguration is AccountConfigDigest, AccountDeployer {
     // ──────────────────────────────────────────────
     //  Constants
     // ──────────────────────────────────────────────
@@ -44,7 +44,7 @@ contract AccountConfiguration is AccountConfigEIP712, AccountDeployer {
 
     struct ChangeSequences {
         uint64 multichain; // chain_id 0
-        uint64 local;      // chain_id == block.chainid
+        uint64 local; // chain_id == block.chainid
     }
 
     mapping(address account => ChangeSequences) internal _changeSequences;

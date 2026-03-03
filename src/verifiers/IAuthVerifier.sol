@@ -8,8 +8,5 @@ interface IAuthVerifier {
     /// @param hash The hash to verify the signature for
     /// @param data Verifier-specific signature data
     /// @return true if the signature is valid, false otherwise
-    function verify(address account, bytes32 keyId, bytes32 hash, bytes calldata data)
-        external
-        view
-        returns (bool);
+    function verify(address account, bytes32 keyId, bytes32 hash, bytes calldata data) external view returns (bool);
 }

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 
 import {AccountConfiguration} from "../../src/AccountConfiguration.sol";
 import {InitialKey} from "../../src/AccountDeployer.sol";
-import {KeyOperation, AccountOperation} from "../../src/AccountConfigEIP712.sol";
+import {KeyOperation, AccountOperation} from "../../src/AccountConfigDigest.sol";
 import {IAuthVerifier} from "../../src/verifiers/IAuthVerifier.sol";
 import {K1Verifier} from "../../src/verifiers/K1Verifier.sol";
 import {P256Verifier} from "../../src/verifiers/P256Verifier.sol";
@@ -21,19 +21,14 @@ contract AccountConfigurationTest is Test {
     IAuthVerifier public delegateVerifier;
     address public defaultAccountImplementation;
 
-    // EIP-712 type hashes (mirrored from AccountConfiguration)
     bytes32 constant KEY_CHANGE_TYPEHASH = keccak256(
         "KeyChange(address account,uint64 chainId,uint64 sequence,KeyOperation[] operations)"
         "KeyOperation(uint8 opType,address verifier,bytes32 keyId,uint8 flags)"
     );
-    bytes32 constant KEY_OPERATION_TYPEHASH =
-        keccak256("KeyOperation(uint8 opType,address verifier,bytes32 keyId,uint8 flags)");
     bytes32 constant ACCOUNT_CHANGE_TYPEHASH = keccak256(
         "AccountChange(address account,uint64 chainId,uint64 sequence,AccountOperation[] operations)"
         "AccountOperation(uint8 opType,uint8 flags,uint32 unlockDelay)"
     );
-    bytes32 constant ACCOUNT_OPERATION_TYPEHASH =
-        keccak256("AccountOperation(uint8 opType,uint8 flags,uint32 unlockDelay)");
 
     function setUp() public virtual {
         accountConfiguration = new AccountConfiguration();
@@ -89,32 +84,23 @@ contract AccountConfigurationTest is Test {
         return abi.encode(keyId, sig);
     }
 
-    // ── EIP-712 digest computation ──
+    // ── Canonical digest computation ──
 
-    function _computeKeyChangeDigest(
-        address account,
-        uint64 chainId,
-        uint64 sequence,
-        KeyOperation[] memory operations
-    ) internal view returns (bytes32) {
+    function _computeKeyChangeDigest(address account, uint64 chainId, uint64 sequence, KeyOperation[] memory operations)
+        internal
+        pure
+        returns (bytes32)
+    {
         bytes32[] memory opHashes = new bytes32[](operations.length);
         for (uint256 i; i < operations.length; i++) {
             opHashes[i] = keccak256(
-                abi.encode(
-                    KEY_OPERATION_TYPEHASH,
-                    operations[i].opType,
-                    operations[i].verifier,
-                    operations[i].keyId,
-                    operations[i].flags
-                )
+                abi.encode(operations[i].opType, operations[i].verifier, operations[i].keyId, operations[i].flags)
             );
         }
-        bytes32 structHash = keccak256(
-            abi.encode(KEY_CHANGE_TYPEHASH, account, chainId, sequence, keccak256(abi.encodePacked(opHashes)))
-        );
-        return keccak256(
-            abi.encodePacked("\x19\x01", accountConfiguration.DOMAIN_SEPARATOR(), structHash)
-        );
+        return
+            keccak256(
+                abi.encode(KEY_CHANGE_TYPEHASH, account, chainId, sequence, keccak256(abi.encodePacked(opHashes)))
+            );
     }
 
     function _computeAccountChangeDigest(
@@ -122,20 +108,13 @@ contract AccountConfigurationTest is Test {
         uint64 chainId,
         uint64 sequence,
         AccountOperation[] memory operations
-    ) internal view returns (bytes32) {
+    ) internal pure returns (bytes32) {
         bytes32[] memory opHashes = new bytes32[](operations.length);
         for (uint256 i; i < operations.length; i++) {
-            opHashes[i] = keccak256(
-                abi.encode(
-                    ACCOUNT_OPERATION_TYPEHASH, operations[i].opType, operations[i].flags, operations[i].unlockDelay
-                )
-            );
+            opHashes[i] = keccak256(abi.encode(operations[i].opType, operations[i].flags, operations[i].unlockDelay));
         }
-        bytes32 structHash = keccak256(
-            abi.encode(ACCOUNT_CHANGE_TYPEHASH, account, chainId, sequence, keccak256(abi.encodePacked(opHashes)))
-        );
         return keccak256(
-            abi.encodePacked("\x19\x01", accountConfiguration.DOMAIN_SEPARATOR(), structHash)
+            abi.encode(ACCOUNT_CHANGE_TYPEHASH, account, chainId, sequence, keccak256(abi.encodePacked(opHashes)))
         );
     }
 }

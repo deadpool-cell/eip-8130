@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {KeyOperation, AccountOperation} from "../../../src/AccountConfigEIP712.sol";
+import {KeyOperation, AccountOperation} from "../../../src/AccountConfigDigest.sol";
 import {AccountConfigurationTest} from "../../lib/AccountConfigurationTest.sol";
 
 contract ApplyAccountChangeTest is AccountConfigurationTest {
@@ -163,10 +163,7 @@ contract ApplyAccountChangeTest is AccountConfigurationTest {
         // Apply a key change at sequence 0
         KeyOperation[] memory keyOps = new KeyOperation[](1);
         keyOps[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(400))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(400))), flags: 0
         });
 
         uint64 seq0 = accountConfiguration.getChangeSequence(account, chainId);
@@ -204,10 +201,7 @@ contract ApplyAccountChangeTest is AccountConfigurationTest {
         // 4. Key changes should work again
         KeyOperation[] memory ops = new KeyOperation[](1);
         ops[0] = KeyOperation({
-            opType: 0x01,
-            verifier: address(k1Verifier),
-            keyId: bytes32(bytes20(vm.addr(500))),
-            flags: 0
+            opType: 0x01, verifier: address(k1Verifier), keyId: bytes32(bytes20(vm.addr(500))), flags: 0
         });
 
         uint64 chainId = uint64(block.chainid);

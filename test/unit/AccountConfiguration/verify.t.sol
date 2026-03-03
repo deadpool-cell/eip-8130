@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {KeyOperation} from "../../../src/AccountConfigEIP712.sol";
+import {KeyOperation} from "../../../src/AccountConfigDigest.sol";
 import {AccountConfigurationTest} from "../../lib/AccountConfigurationTest.sol";
 
 contract VerifyTest is AccountConfigurationTest {
