@@ -23,8 +23,9 @@ contract AccountConfiguration is AccountConfigDigest, AccountDeployer {
     uint8 constant OP_AUTHORIZE_OWNER = 0x01;
     uint8 constant OP_REVOKE_OWNER = 0x02;
 
-    /// @dev Sentinel value to distinguish "explicitly revoked" from "never registered" (address(0)).
-    ///      Needed for the implicit EOA authorization rule.
+    /// @dev Sentinel for the self-ownerId (ownerId == bytes32(bytes20(account))) to distinguish
+    ///      "explicitly revoked" from "never registered" (address(0)), which would re-trigger the
+    ///      implicit EOA authorization rule. Non-self ownerIds are deleted back to address(0).
     address constant REVOKED = address(1);
 
     bytes32 constant LOCK_TYPEHASH = keccak256("Lock(address account,uint32 unlockDelay)");
@@ -316,7 +317,7 @@ contract AccountConfiguration is AccountConfigDigest, AccountDeployer {
     }
 
     /// @dev Returns the effective verifier for an owner, applying the implicit EOA rule.
-    ///      REVOKED sentinel → address(0). Empty slot + implicit EOA eligible → K1_VERIFIER.
+    ///      REVOKED sentinel (self-ownerId only) → address(0). Empty slot + implicit EOA eligible → K1_VERIFIER.
     function _getEffectiveVerifier(address account, bytes32 ownerId) internal view returns (address) {
         address v = _ownerConfigs[account][ownerId];
         if (v == REVOKED) return address(0);
@@ -351,7 +352,11 @@ contract AccountConfiguration is AccountConfigDigest, AccountDeployer {
             emit OwnerAuthorized(account, op.ownerId, op.verifier);
         } else if (op.opType == OP_REVOKE_OWNER) {
             require(_getEffectiveVerifier(account, op.ownerId) != address(0));
-            _ownerConfigs[account][op.ownerId] = REVOKED;
+            if (op.ownerId == bytes32(bytes20(account))) {
+                _ownerConfigs[account][op.ownerId] = REVOKED;
+            } else {
+                delete _ownerConfigs[account][op.ownerId];
+            }
             emit OwnerRevoked(account, op.ownerId);
         } else {
             revert();
