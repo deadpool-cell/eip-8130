@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {IAuthVerifier} from "./IAuthVerifier.sol";
+import {IVerifier} from "./IVerifier.sol";
 
 /// @notice Schnorr signature verifier over secp256k1 using the ecrecover precompile.
 ///
@@ -15,9 +15,7 @@ import {IAuthVerifier} from "./IAuthVerifier.sol";
 ///
 ///         Verification uses the ecrecover trick to recover address(s·G − e·P)
 ///         and checks e == keccak256(address(R) || hash).
-///
-///         Only calls the ecrecover precompile (0x01) — sandbox-compatible.
-contract SchnorrVerifier is IAuthVerifier {
+contract SchnorrVerifier is IVerifier {
     uint256 private constant N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141;
 
     function verify(bytes32 hash, bytes calldata data) external pure returns (bytes32 ownerId) {

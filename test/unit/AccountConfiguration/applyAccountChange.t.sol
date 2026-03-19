@@ -115,7 +115,9 @@ contract AccountLockTest is AccountConfigurationTest {
         _lockAccount(account, OWNER_PK, 1 hours);
 
         ConfigOperation[] memory ops = new ConfigOperation[](1);
-        ops[0] = ConfigOperation({opType: 0x01, verifier: address(k1Verifier), ownerId: bytes32(bytes20(vm.addr(400)))});
+        ops[0] = ConfigOperation({
+            opType: 0x01, verifier: address(k1Verifier), ownerId: bytes32(bytes20(vm.addr(400))), scope: 0x00
+        });
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -155,7 +157,9 @@ contract AccountLockTest is AccountConfigurationTest {
         assertFalse(locked);
 
         ConfigOperation[] memory ops = new ConfigOperation[](1);
-        ops[0] = ConfigOperation({opType: 0x01, verifier: address(k1Verifier), ownerId: bytes32(bytes20(vm.addr(500)))});
+        ops[0] = ConfigOperation({
+            opType: 0x01, verifier: address(k1Verifier), ownerId: bytes32(bytes20(vm.addr(500))), scope: 0x00
+        });
 
         uint64 chainId = uint64(block.chainid);
         uint64 seq = accountConfiguration.getChangeSequence(account, chainId);
@@ -163,6 +167,7 @@ contract AccountLockTest is AccountConfigurationTest {
         bytes memory auth = _buildK1Auth(OWNER_PK, digest);
 
         accountConfiguration.applyConfigChange(account, chainId, seq, ops, auth);
-        assertTrue(accountConfiguration.isAuthorized(account, bytes32(bytes20(vm.addr(500)))));
+        (address v,) = accountConfiguration.getOwner(account, bytes32(bytes20(vm.addr(500))));
+        assertTrue(v != address(0));
     }
 }
