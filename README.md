@@ -6,7 +6,7 @@ Reference implementation for [EIP-8130: Account Abstraction by Account Configura
 
 ## Overview
 
-EIP-8130 defines a new transaction type and onchain system contract that together provide account abstraction. Accounts configure authorized owners and verifiers in the system contract; the protocol validates transactions using onchain verifier contracts that implement `IVerifier.verify(hash, data)`.
+EIP-8130 defines a new transaction type and onchain system contract that together provide account abstraction. Accounts configure authorized owners and verifiers in the system contract;stransactions using onchain verifier contracts that implement `IVerifier.verify(hash, data)`.
 
 ## Contracts
 
